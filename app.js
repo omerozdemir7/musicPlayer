@@ -45,14 +45,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- TEMEL OYNATICI FONKSİYONLARI ---
 
-    function applyMarqueeIfNeeded(element) {
-        if (element.scrollWidth > element.clientWidth) {
-            element.classList.add('marquee');
-        } else {
-            element.classList.remove('marquee');
-        }
-    }
-
     function loadSong(song) {
         if (!song) return;
         songTitle.innerHTML = `<span>${song.title}</span>`;
@@ -62,12 +54,6 @@ document.addEventListener('DOMContentLoaded', () => {
         miniTitle.innerHTML = `<span>${song.title}</span>`;
         miniArtist.textContent = song.artist;
         miniAlbum.src = song.albumArtSrc;
-
-        setTimeout(() => {
-            applyMarqueeIfNeeded(songTitle);
-            applyMarqueeIfNeeded(miniTitle);
-        }, 10);
-        
         renderLibrary();
     }
     
@@ -179,7 +165,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 playSong();
             });
             playlistContainer.appendChild(item);
-            applyMarqueeIfNeeded(item.querySelector('.title'));
         });
     }
 
@@ -191,7 +176,6 @@ document.addEventListener('DOMContentLoaded', () => {
     nextBtn.addEventListener('click', nextSong);
     shuffleBtn.addEventListener('click', () => { shuffle = !shuffle; shuffleBtn.classList.toggle('active', shuffle); });
     repeatBtn.addEventListener('click', () => { repeat = !repeat; repeatBtn.classList.toggle('active', repeat); });
-
     audio.addEventListener('ended', nextSong);
     audio.addEventListener('timeupdate', () => {
         const { duration, currentTime } = audio;
@@ -201,64 +185,68 @@ document.addEventListener('DOMContentLoaded', () => {
             totalDurationEl.textContent = formatTime(duration);
         }
     });
-
     progressContainer.addEventListener('click', (e) => {
         if (audio.duration) audio.currentTime = (e.offsetX / progressContainer.clientWidth) * audio.duration;
     });
-
     volumeSlider.addEventListener('input', (e) => audio.volume = e.target.value / 100);
-
-    // DÜZELTİLDİ: Tekil dosya ekleme butonu
     addSingleFilesBtn.addEventListener('click', () => fileInput.click());
 
-    // DÜZELTİLDİ: Dosya seçildiğinde ekleme mantığı
-    fileInput.addEventListener('change', async (e) => {
-        const files = Array.from(e.target.files);
-        if (files.length === 0) return;
-        
-        let firstNewSongIndex = songLibrary.length;
-        for (const file of files) {
-            if (!songLibrary.some(song => song.id === file.name + '-' + file.lastModified)) {
-                const song = await createSongFromFile(file);
-                songLibrary.push(song);
-            }
-        }
+// DEĞİŞTİR: Dosya seçildiğinde mevcut listeye ekleme yapar
+fileInput.addEventListener('change', async (e) => {
+    const files = Array.from(e.target.files);
+    let firstNewSongIndex = songLibrary.length; // İlk yeni şarkının indeksini al
+    let newSongsAdded = false;
 
+    for (const file of files) {
+        const songExists = songLibrary.some(song => song.id === file.name + '-' + file.lastModified);
+        if (!songExists) {
+            const song = await createSongFromFile(file);
+            songLibrary.push(song);
+            newSongsAdded = true;
+        }
+    }
+    if (newSongsAdded) {
         renderLibrary();
         updateButtonStates();
-        
-        if (!isPlaying && songLibrary.length > 0) {
+        // YENİ EKLENEN KISIM: Eğer şu an hiçbir şey çalmıyorsa, yeni eklenen ilk şarkıyı oynat.
+        // Bu, kullanıcı etkileşimiyle tetiklendiği için tarayıcı oynatma politikasını ihlal etmez.
+        if (!isPlaying) {
             currentSongIndex = firstNewSongIndex;
             loadSong(songLibrary[currentSongIndex]);
             playSong();
         }
-    });
+    }
+});
+
+// Klasör seçildiğinde otomatik oynatmayı etkinleştirme
+async function processDirectoryHandle(directoryHandle) {
+    // ... (Mevcut kod) ...
+    if (songLibrary.length > 0) {
+        currentSongIndex = 0;
+        loadSong(songLibrary[0]);
+        renderLibrary();
+        updateButtonStates();
+        // YENİ EKLENEN KISIM: İlk şarkıyı otomatik oynat
+        playSong();
+    } else {
+        alert("Seçilen klasörde desteklenen formatta müzik dosyası bulunamadı.");
+    }
+}
     
     addFilesBtn.addEventListener('click', async () => {
-        if ('showDirectoryPicker' in window) {
-            try {
-                const dirHandle = await window.showDirectoryPicker();
-                const newSongs = [];
-                for await (const entry of dirHandle.values()) {
-                    if (entry.kind === 'file' && entry.name.match(/\.(mp3|wav|ogg|m4a)$/i)) {
-                        const file = await entry.getFile();
-                        const song = await createSongFromFile(file);
-                        newSongs.push(song);
-                    }
-                }
-                if (newSongs.length > 0) {
-                    songLibrary = [...newSongs].sort((a,b) => a.title.localeCompare(b.title));
-                    currentSongIndex = 0;
-                    loadSong(songLibrary[0]);
-                    playSong();
-                } else {
-                    alert("Seçilen klasörde desteklenen müzik dosyası bulunamadı.");
-                }
-            } catch (err) { console.log('Klasör seçimi iptal edildi.', err); }
+    try {
+        const directoryHandle = await window.showDirectoryPicker();
+        await dbPut('musicDirectoryHandle', directoryHandle);
+        await processDirectoryHandle(directoryHandle);
+        renderLibrary();
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            console.warn('Klasör seçimi iptal edildi.');
         } else {
-            alert('Tarayıcınız klasör seçmeyi desteklemiyor, lütfen "Dosya Ekle" butonunu kullanın.');
+            console.error('Klasör seçimi başarısız:', err);
         }
-    });
+    }
+});
 
     playlistContainer.addEventListener('click', (e) => {
         if (e.target.closest('.delete-song-btn')) {
@@ -271,11 +259,14 @@ document.addEventListener('DOMContentLoaded', () => {
             songLibrary.splice(indexToDelete, 1);
             
             if (songLibrary.length === 0) {
-                // ... oynatıcıyı sıfırla
+                audio.src = '';
+                pauseSong();
+                loadSong({ title: 'Müzik Bekleniyor', artist: 'Lütfen bir dosya seçin', src: '', albumArtSrc: 'https://picsum.photos/300/300?grayscale' });
+                miniPlayer.classList.remove('visible');
             } else if (indexToDelete === currentSongIndex) {
                 currentSongIndex = Math.max(0, indexToDelete -1);
                 loadSong(songLibrary[currentSongIndex]);
-                playSong();
+                if (isPlaying) playSong();
             } else if (indexToDelete < currentSongIndex) {
                 currentSongIndex--;
             }
@@ -284,7 +275,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // DÜZELTİLDİ: YouTube Formu
     youtubeForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const videoUrl = youtubeInput.value.trim();
@@ -297,7 +287,6 @@ document.addEventListener('DOMContentLoaded', () => {
         songArtist.textContent = "YouTube'dan ses alınıyor...";
 
         try {
-            // BU ADRES, AŞAĞIDA KURACAĞIMIZ SUNUCUYA AİT
             const response = await fetch(`http://localhost:3000/get-song?url=${encodeURIComponent(videoUrl)}`);
             if (!response.ok) throw new Error(`Sunucu hatası: ${response.statusText}`);
             
@@ -314,7 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
             songLibrary.unshift(youtubeSong);
             currentSongIndex = 0;
             loadSong(youtubeSong);
-            playSong();
+            playSong(); // YouTube'dan gelen link direkt çalabilir, bu kalabilir.
             youtubeInput.value = '';
             
         } catch (error) {
@@ -338,5 +327,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function drawVisualizer() { if (isPlaying && analyser) { analyser.getByteFrequencyData(dataArray); } ctx.clearRect(0, 0, canvas.width, canvas.height); const barCount = dataArray ? dataArray.length : 0; const barWidth = (canvas.width / barCount) * 1.5; let x = 0; const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent-color').trim(); for (let i = 0; i < barCount; i++) { const barHeight = (dataArray[i] / 255) * canvas.height; const gradient = ctx.createLinearGradient(0, canvas.height, 0, canvas.height - barHeight); gradient.addColorStop(0, accentColor); gradient.addColorStop(1, '#ffffff'); ctx.fillStyle = gradient; ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight); x += barWidth + 2; } requestAnimationFrame(drawVisualizer); }
     
     updateButtonStates();
-    drawVisualizer();
+    newFunction();
+
+    function newFunction() {
+        drawVisualizer();
+    }
 });

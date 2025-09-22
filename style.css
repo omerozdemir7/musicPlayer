@@ -389,14 +389,22 @@ body {
   border-radius: 6px;
   object-fit: cover;
 }
+/* mini-player'ın şarkı bilgisi bölümü */
 .mini-info {
-  min-width: 160px;
-  color: var(--primary-text-color);
+  /* Genişliği sabitleyin, böylece uzun şarkı adları taşabilir. */
+  width: 150px; /* Bu değeri ihtiyacınıza göre ayarlayabilirsiniz */
+  
+  /* Taşma durumunda metnin görünür olmasını engelle */
   overflow: hidden;
+  white-space: nowrap;
 }
+
+/* Şarkı başlığı */
 .mini-title {
   font-weight: 700;
   font-size: 0.9rem;
+  
+  /* .mini-info'dan gelen ayarlar yeterli, buraya ek bir şey gerekmez */
 }
 .mini-artist {
   font-size: 0.8rem;
@@ -439,6 +447,40 @@ body {
   text-overflow: ellipsis; /* Sığmayan metinlerin sonuna ... koyar */
 }
 
+
+
+.song-title,
+.playlist-item .title,
+.mini-player .mini-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* Varsayılan olarak metin sığmazsa ... koy */
+}
+
+/* JavaScript tarafından eklenecek olan ve animasyonu başlatan sınıf */
+.marquee {
+  text-overflow: clip; /* Animasyon sırasında ... olmasın */
+}
+
+.marquee > span {
+  display: inline-block;
+  /* Animasyon: animasyon-adı süre zamanlama-fonksiyonu gecikme tekrar-sayısı */
+  animation: marquee-scroll 12s linear infinite;
+}
+
+/* Kayan yazı animasyonunun kendisi */
+@keyframes marquee-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  15% {
+    transform: translateX(0); /* Başlamadan önce 1.8s bekle */
+  }
+  100% {
+    /* Yazının tamamının ekranın solundan çıkmasını garantilemek için biraz pay bırakıyoruz */
+    transform: translateX(calc(-100% - 20px));
+  }
+}
 /* Medya Sorguları */
 @media (max-width: 720px) {
   .library-container {

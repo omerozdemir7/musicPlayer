@@ -48,6 +48,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const storeName = 'fileStore';
     let db;
 
+    // YENİ FONKSİYON: Metin uzunluğunu kontrol edip marquee sınıfı ekler
+function applyMarqueeIfNeeded(element, charLimit = 20) {
+    const span = element.querySelector('span');
+    if (!span) return; // İçinde span yoksa işlem yapma
+
+    const text = span.textContent || span.innerText;
+    if (text.length > charLimit) {
+        element.classList.add('marquee');
+    } else {
+        element.classList.remove('marquee');
+    }
+}
     function initDB() {
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(dbName, 1);
@@ -135,74 +147,82 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- YENİ FONKSİYON: Metin taşmasını kontrol edip animasyon sınıfı ekler ---
-    function applyMarqueeIfNeeded(element) {
-        // Elementin içeriğinin gerçek genişliği, görünen genişliğinden büyük mü?
-        if (element.scrollWidth > element.clientWidth) {
-            element.classList.add('marquee');
-        } else {
-            element.classList.remove('marquee');
-        }
+ // script.js dosyasındaki fonksiyon
+function applyMarqueeIfNeeded(element) {
+    if (element.scrollWidth > element.clientWidth) {
+        element.classList.add('marquee');
+    } else {
+        element.classList.remove('marquee');
     }
+}
 
     // --- TEMEL PLAYER FONKSİYONLARI ---
-    function loadSong(song) {
-        if (!song) return;
+// loadSong fonksiyonunun içini aşağıdaki gibi güncelleyin:
+function loadSong(song) {
+    if (!song) return;
+    
+    // All necessary information is set only ONCE.
+    songTitle.innerHTML = `<span>${song.title}</span>`;
+    songArtist.textContent = song.artist;
+    audio.src = song.src;
+    albumArt.src = song.albumArtSrc;
+    miniAlbum.src = song.albumArtSrc;
+    miniTitle.innerHTML = `<span>${song.title}</span>`;
+    miniArtist.textContent = song.artist;
+    
+    // After the DOM is updated, check for marquee effect. This part is correct.
+    setTimeout(() => {
+        // We now call the function without a character limit.
+        // The function itself will check if the text overflows.
+        applyMarqueeIfNeeded(songTitle);
+        applyMarqueeIfNeeded(miniTitle);
+    }, 10);
+
+    renderLibrary();
+}
+
+    // renderLibrary fonksiyonunun içindeki forEach döngüsünü güncelleyin:
+function renderLibrary(library = songLibrary) {
+    playlistContainer.innerHTML = '';
+    if (library.length === 0) {
+        playlistContainer.innerHTML = '<p class="empty-playlist">Henüz müzik eklenmedi.</p>';
+        return;
+    }
+    library.forEach((song) => {
+        const item = document.createElement('div');
+        item.className = 'playlist-item';
+        item.dataset.id = song.id;
+
+        if (songLibrary[currentSongIndex] && song.id === songLibrary[currentSongIndex].id) {
+             item.classList.add('playing');
+        }
         
-        // Kayan yazı için başlıkları span içine al
-        songTitle.innerHTML = `<span>${song.title}</span>`;
-        songArtist.textContent = song.artist;
-        audio.src = song.src;
-        albumArt.src = song.albumArtSrc;
-        miniAlbum.src = song.albumArtSrc;
-        miniTitle.innerHTML = `<span>${song.title}</span>`;
-        miniArtist.textContent = song.artist;
+        item.innerHTML = `
+            <div class="song-info">
+                <div class="title"><span>${song.title}</span></div>
+                <div class="artist">${song.artist}</div>
+            </div>
+            <button class="delete-song-btn" title="Listeden Kaldır"><i class="fas fa-times"></i></button>
+        `;
         
-        // DOM güncellendikten sonra taşma kontrolü yap
+        item.querySelector('.song-info').addEventListener('click', () => {
+            currentSongIndex = songLibrary.findIndex(s => s.id === song.id);
+            loadSong(song);
+            playSong();
+        });
+
+        // Add this line after the item is created
+        const titleElement = item.querySelector('.title');
         setTimeout(() => {
-            applyMarqueeIfNeeded(songTitle);
-            applyMarqueeIfNeeded(miniTitle);
+            // Check if the title is too long and apply the marquee effect
+            if (titleElement) {
+                applyMarqueeIfNeeded(titleElement);
+            }
         }, 10);
 
-        renderLibrary();
-    }
-
-    function renderLibrary(library = songLibrary) {
-        playlistContainer.innerHTML = '';
-        if (library.length === 0) {
-            playlistContainer.innerHTML = '<p class="empty-playlist">Henüz müzik eklenmedi.</p>';
-            return;
-        }
-        library.forEach((song) => {
-            const item = document.createElement('div');
-            item.className = 'playlist-item';
-            item.dataset.id = song.id;
-
-            if (songLibrary[currentSongIndex] && song.id === songLibrary[currentSongIndex].id) {
-                 item.classList.add('playing');
-            }
-            
-            item.innerHTML = `
-                <div class="song-info">
-                    <div class="title"><span>${song.title}</span></div>
-                    <div class="artist">${song.artist}</div>
-                </div>
-                <button class="delete-song-btn" title="Listeden Kaldır"><i class="fas fa-times"></i></button>
-            `;
-            
-            // Oynatma olayını sadece şarkı bilgisine bağla
-            item.querySelector('.song-info').addEventListener('click', () => {
-                currentSongIndex = songLibrary.findIndex(s => s.id === song.id);
-                loadSong(song);
-                playSong();
-            });
-
-            playlistContainer.appendChild(item);
-
-            // Her bir liste elemanı eklendikten sonra taşma kontrolü yap
-            const titleElement = item.querySelector('.title');
-            applyMarqueeIfNeeded(titleElement);
-        });
-    }
+        playlistContainer.appendChild(item);
+    });
+}
 
     function updatePlayPauseIcons() {
         if (isPlaying) {
